@@ -1,10 +1,25 @@
 import dataclasses
 
+import cv2
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
 def size(value: int):
     return round(value * RESIZE) or 1
+
+
+def video_pixmap(video_path: str):
+    video = cv2.VideoCapture(video_path)
+    pixmap = None
+    success, frame = video.read()
+    if success:
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        h, w, ch = frame.shape
+        bytes_per_line = ch * w
+        q_image = QtGui.QImage(frame.data, w, h, bytes_per_line, QtGui.QImage.Format_RGB888)
+        pixmap = QtGui.QPixmap.fromImage(q_image)
+    video.release()
+    return pixmap
 
 
 RESIZE = 2
@@ -82,6 +97,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.statusbar.setObjectName("statusbar")
         self.setStatusBar(self.statusbar)
 
+        self.cache = {}
         self.data = Data()
 
         self.setup_ui()
@@ -210,7 +226,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def next_target_image(self):
         if self.data.target_file_paths:
             self.data.target_file_paths.append(self.data.target_file_paths.pop(0))
-            self.image_target.setPixmap(QtGui.QPixmap(self.data.target_file_paths[0]))
+            self._set_target_image()
 
     def prev_face_image(self):
         if self.data.face_file_paths:
@@ -220,7 +236,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def prev_target_image(self):
         if self.data.target_file_paths:
             self.data.target_file_paths.insert(0, self.data.target_file_paths.pop())
-            self.image_target.setPixmap(QtGui.QPixmap(self.data.target_file_paths[0]))
+            self._set_target_image()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -246,7 +262,17 @@ class MainWindow(QtWidgets.QMainWindow):
             return
         self.data.target_file_paths = paths
         self.data.is_target_video = _filter == FileFilter.VIDEOS
-        self.image_target.setPixmap(QtGui.QPixmap(self.data.target_file_paths[0]))
+        if self.data.is_target_video:
+            for path in paths:
+                self.cache[path] = video_pixmap(path)
+        self._set_target_image()
+
+    def _set_target_image(self):
+        if self.data.is_target_video:
+            pixmap = self.cache.get(self.data.target_file_paths[0])
+        else:
+            pixmap = QtGui.QPixmap(self.data.target_file_paths[0])
+        self.image_target.setPixmap(pixmap)
 
     def open_file_dialog(self, file_filters: list = None):
         if file_filters is None:
